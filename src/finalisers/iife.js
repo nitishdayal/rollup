@@ -3,27 +3,36 @@ import { getName } from '../utils/map-helpers.js';
 import getInteropBlock from './shared/getInteropBlock.js';
 import getExportBlock from './shared/getExportBlock.js';
 import getGlobalNameMaker from './shared/getGlobalNameMaker.js';
+import propertyStringFor from './shared/propertyStringFor';
+import warnOnBuiltins from './shared/warnOnBuiltins.js';
+
+// thisProp('foo.bar-baz.qux') === "this.foo['bar-baz'].qux"
+const thisProp = propertyStringFor('this');
+
+// propString('foo.bar-baz.qux') === ".foo['bar-baz'].qux"
+const propString = propertyStringFor('');
 
 function setupNamespace ( keypath ) {
-	const parts = keypath.split( '.' ); // TODO support e.g. `foo['something-hyphenated']`?
+	const parts = keypath.split( '.' );
 
 	parts.pop();
 
 	let acc = 'this';
 
 	return parts
-		.map( part => ( acc += `.${part}`, `${acc} = ${acc} || {};` ) )
+		.map( part => ( acc += propString(part), `${acc} = ${acc} || {};` ) )
 		.join( '\n' ) + '\n';
 }
 
-export default function iife ( bundle, magicString, { exportMode, indentString, intro }, options ) {
-	const globalNameMaker = getGlobalNameMaker( options.globals || blank(), bundle.onwarn );
+export default function iife ( bundle, magicString, { exportMode, indentString, intro, outro }, options ) {
+	const globalNameMaker = getGlobalNameMaker( options.globals || blank(), bundle );
 
 	const name = options.moduleName;
 	const isNamespaced = name && ~name.indexOf( '.' );
 
-	const dependencies = bundle.externalModules.map( globalNameMaker );
+	warnOnBuiltins( bundle );
 
+	const dependencies = bundle.externalModules.map( globalNameMaker );
 	const args = bundle.externalModules.map( getName );
 
 	if ( exportMode !== 'none' && !name ) {
@@ -31,7 +40,7 @@ export default function iife ( bundle, magicString, { exportMode, indentString, 
 	}
 
 	if ( exportMode === 'named' ) {
-		dependencies.unshift( `(this.${name} = this.${name} || {})` );
+		dependencies.unshift( `(${thisProp(name)} = ${thisProp(name)} || {})` );
 		args.unshift( 'exports' );
 	}
 
@@ -41,7 +50,7 @@ export default function iife ( bundle, magicString, { exportMode, indentString, 
 	const wrapperOutro = `\n\n}(${dependencies}));`;
 
 	if ( exportMode === 'default' ) {
-		wrapperIntro = ( isNamespaced ? `this.` : `${bundle.varOrConst} ` ) + `${name} = ${wrapperIntro}`;
+		wrapperIntro = ( isNamespaced ? thisProp(name) : `${bundle.varOrConst} ${name}` ) + ` = ${wrapperIntro}`;
 	}
 
 	if ( isNamespaced ) {
@@ -56,7 +65,7 @@ export default function iife ( bundle, magicString, { exportMode, indentString, 
 
 	const exportBlock = getExportBlock( bundle.entryModule, exportMode );
 	if ( exportBlock ) magicString.append( '\n\n' + exportBlock );
-	if ( options.outro ) magicString.append( `\n${options.outro}` );
+	if ( outro ) magicString.append( outro );
 
 	return magicString
 		.indent( indentString )

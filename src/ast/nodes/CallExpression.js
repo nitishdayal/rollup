@@ -1,6 +1,7 @@
-import getLocation from '../../utils/getLocation.js';
+import { locate } from 'locate-character';
 import error from '../../utils/error.js';
 import Node from '../Node.js';
+import isProgramLevel from '../utils/isProgramLevel.js';
 import callHasEffects from './shared/callHasEffects.js';
 
 export default class CallExpression extends Node {
@@ -13,12 +14,16 @@ export default class CallExpression extends Node {
 					message: `Cannot call a namespace ('${this.callee.name}')`,
 					file: this.module.id,
 					pos: this.start,
-					loc: getLocation( this.module.code, this.start )
+					loc: locate( this.module.code, this.start, { offsetLine: 1 })
 				});
 			}
 
 			if ( this.callee.name === 'eval' && declaration.isGlobal ) {
-				this.module.bundle.onwarn( `Use of \`eval\` (in ${this.module.id}) is strongly discouraged, as it poses security risks and may cause issues with minification. See https://github.com/rollup/rollup/wiki/Troubleshooting#avoiding-eval for more details` );
+				this.module.warn({
+					code: 'EVAL',
+					message: `Use of eval is strongly discouraged, as it poses security risks and may cause issues with minification`,
+					url: 'https://github.com/rollup/rollup/wiki/Troubleshooting#avoiding-eval'
+				}, this.start );
 			}
 		}
 
@@ -26,11 +31,13 @@ export default class CallExpression extends Node {
 	}
 
 	hasEffects ( scope ) {
-		return callHasEffects( scope, this.callee );
+		return callHasEffects( scope, this.callee, false );
 	}
 
 	initialise ( scope ) {
-		this.module.bundle.dependentExpressions.push( this );
+		if ( isProgramLevel( this ) ) {
+			this.module.bundle.dependentExpressions.push( this );
+		}
 		super.initialise( scope );
 	}
 

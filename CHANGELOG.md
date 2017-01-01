@@ -1,5 +1,71 @@
 # rollup changelog
 
+## 0.39.2
+
+* Prevent mutation of cached ASTs (fixes stack overflow with rollup-watch) ([#1205](https://github.com/rollup/rollup/pull/1205))
+
+## 0.39.1
+
+* Ignore `var` initialisers in dead branches ([#1198](https://github.com/rollup/rollup/issues/1198))
+
+## 0.39.0
+
+* [BREAKING] Warnings are objects, rather than strings ([#1194](https://github.com/rollup/rollup/issues/1194))
+
+## 0.38.3
+
+* More informative warning for implicit external dependencies ([#1051](https://github.com/rollup/rollup/issues/1051))
+* Warn when creating browser bundle with external dependencies on Node built-ins ([#1051](https://github.com/rollup/rollup/issues/1051))
+* Statically analyse LogicalExpression nodes, for better dead code removal ([#1061](https://github.com/rollup/rollup/issues/1061))
+
+## 0.38.2
+
+* Preserve `var` declarations in dead branches ([#997](https://github.com/rollup/rollup/issues/997))
+* Warn if exporting a call expression that looks like a function declaration ([#1011](https://github.com/rollup/rollup/issues/1011))
+* Wrap function expressions in parentheses if necessary ([#1011](https://github.com/rollup/rollup/issues/1011))
+
+## 0.38.1
+
+* Fix sourcemap comment removal ([#1104](https://github.com/rollup/rollup/issues/1104))
+* Warn if empty bundle is generated ([#444](https://github.com/rollup/rollup/issues/444))
+* Support ES2017 syntax ([#492](https://github.com/rollup/rollup/issues/492))
+* Remove unused imports from external modules ([#595](https://github.com/rollup/rollup/issues/595))
+* Remove unused function and class declarations inside function bodies ([#1108](https://github.com/rollup/rollup/issues/1108), [#1178](https://github.com/rollup/rollup/issues/1178))
+* Deconflict function expression IDs ([#1176](https://github.com/rollup/rollup/issues/1176))
+
+## 0.38.0
+
+* [BREAKING] `export { foo as default }` creates live binding ([#1078](https://github.com/rollup/rollup/issues/1078))
+* Prevent sourceMappingURL removal edge case ([#988](https://github.com/rollup/rollup/issues/988))
+* Bind function expression IDs to the correct scope ([#1083](https://github.com/rollup/rollup/issues/1083))
+* Correctly deshadow destructured parameters with assignments ([#1008](https://github.com/rollup/rollup/issues/1008))
+
+## 0.37.2
+
+* Remove unused `new` expressions without side-effects ([#179](https://github.com/rollup/rollup/issues/179))
+* Only remove valid sourceMappingURL comments ([#1132](https://github.com/rollup/rollup/issues/1132))
+* Ensure blocks containing activated `var` declarations are included in output ([#1113](https://github.com/rollup/rollup/issues/1113))
+* Support plugin outros ([#1116](https://github.com/rollup/rollup/issues/1116))
+
+## 0.37.1
+
+* Follow symlinks ([#447](https://github.com/rollup/rollup/issues/447))
+* Fix tree-shaking of recursive functions and other cases ([#1120](https://github.com/rollup/rollup/issues/1120), [#1142](https://github.com/rollup/rollup/issues/1142))
+* Support module names that require quotes ([#582](https://github.com/rollup/rollup/issues/582), [#584](https://github.com/rollup/rollup/issues/584))
+* Fix [#957](https://github.com/rollup/rollup/issues/957)
+
+## 0.37.0
+
+* [BREAKING] Default exports are not included in reified namespaces ([#1028](https://github.com/rollup/rollup/issues/1028))
+* Parentheses do not defeat tree-shaking ([#1101](https://github.com/rollup/rollup/issues/1101), [#1128](https://github.com/rollup/rollup/issues/1128))
+* More `legacy` fixes: do not create getters ([#1069](https://github.com/rollup/rollup/pull/1069)), do not include `__esModule` ([#1068](https://github.com/rollup/rollup/pull/1068)), quote reserved property names ([#1057](https://github.com/rollup/rollup/pull/1057))
+* Fix missing namespace member warnings ([#1045](https://github.com/rollup/rollup/issues/1045))
+* Fix TypeError in arrow function without braces returning a function ([#1062](https://github.com/rollup/rollup/pull/1062))
+
+## 0.36.4
+
+* Only depend on program-level call expressions ([#977](https://github.com/rollup/rollup/issues/977))
+
 ## 0.36.3
 
 * Add `legacy` option for IE8 support ([#989](https://github.com/rollup/rollup/pull/989))

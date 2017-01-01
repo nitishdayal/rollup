@@ -4,13 +4,14 @@ function notDefault ( name ) {
 	return name !== 'default';
 }
 
-export default function es ( bundle, magicString, { intro }, options ) {
+export default function es ( bundle, magicString, { intro, outro } ) {
 	const importBlock = bundle.externalModules
 		.map( module => {
 			const specifiers = [];
 			const specifiersList = [specifiers];
 			const importedNames = keys( module.declarations )
 				.filter( name => name !== '*' && name !== 'default' )
+				.filter( name => module.declarations[ name ].activated )
 				.map( name => {
 					const declaration = module.declarations[ name ];
 
@@ -71,7 +72,7 @@ export default function es ( bundle, magicString, { intro }, options ) {
 	}
 
 	if ( exportBlock ) magicString.append( '\n\n' + exportBlock.trim() );
-	if ( options.outro ) magicString.append( `\n${options.outro}` );
+	if ( outro ) magicString.append( outro );
 
 	return magicString.trim();
 }

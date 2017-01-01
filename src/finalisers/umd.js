@@ -4,6 +4,14 @@ import getInteropBlock from './shared/getInteropBlock.js';
 import getExportBlock from './shared/getExportBlock.js';
 import getGlobalNameMaker from './shared/getGlobalNameMaker.js';
 import esModuleExport from './shared/esModuleExport.js';
+import propertyStringFor from './shared/propertyStringFor.js';
+import warnOnBuiltins from './shared/warnOnBuiltins.js';
+
+// globalProp('foo.bar-baz') === "global.foo['bar-baz']"
+const globalProp = propertyStringFor('global');
+
+// propString('foo.bar-baz') === ".foo['bar']"
+const propString = propertyStringFor('');
 
 function setupNamespace ( name ) {
 	const parts = name.split( '.' );
@@ -11,30 +19,32 @@ function setupNamespace ( name ) {
 
 	let acc = 'global';
 	return parts
-		.map( part => ( acc += `.${part}`, `${acc} = ${acc} || {}` ) )
-		.concat( `global.${name}` )
+		.map( part => ( acc += propString(part), `${acc} = ${acc} || {}` ) )
+		.concat( globalProp(name) )
 		.join( ', ' );
 }
 
 const wrapperOutro = '\n\n})));';
 
-export default function umd ( bundle, magicString, { exportMode, indentString, intro }, options ) {
+export default function umd ( bundle, magicString, { exportMode, indentString, intro, outro }, options ) {
 	if ( exportMode !== 'none' && !options.moduleName ) {
 		throw new Error( 'You must supply options.moduleName for UMD bundles' );
 	}
 
-	const globalNameMaker = getGlobalNameMaker( options.globals || blank(), bundle.onwarn );
+	warnOnBuiltins( bundle );
+
+	const globalNameMaker = getGlobalNameMaker( options.globals || blank(), bundle );
 
 	const amdDeps = bundle.externalModules.map( quotePath );
 	const cjsDeps = bundle.externalModules.map( req );
-	const globalDeps = bundle.externalModules.map( module => `global.${globalNameMaker( module )}` );
+	const globalDeps = bundle.externalModules.map( module => globalProp(globalNameMaker( module )) );
 
 	const args = bundle.externalModules.map( getName );
 
 	if ( exportMode === 'named' ) {
 		amdDeps.unshift( `'exports'` );
 		cjsDeps.unshift( `exports` );
-		globalDeps.unshift( `(${setupNamespace(options.moduleName)} = global.${options.moduleName} || {})` );
+		globalDeps.unshift( `(${setupNamespace(options.moduleName)} = ${globalProp(options.moduleName)} || {})` );
 
 		args.unshift( 'exports' );
 	}
@@ -50,10 +60,10 @@ export default function umd ( bundle, magicString, { exportMode, indentString, i
 
 	const globalExport = options.noConflict === true ?
 		`(function() {
-				var current = global.${options.moduleName};
+				var current = ${globalProp(options.moduleName)};
 				var exports = factory(${globalDeps});
-				global.${options.moduleName} = exports;
-				exports.noConflict = function() { global.${options.moduleName} = current; return exports; };
+				${globalProp(options.moduleName)} = exports;
+				exports.noConflict = function() { ${globalProp(options.moduleName)} = current; return exports; };
 			})()` : `(${defaultExport}factory(${globalDeps}))`;
 
 	const wrapperIntro =
@@ -73,8 +83,8 @@ export default function umd ( bundle, magicString, { exportMode, indentString, i
 
 	const exportBlock = getExportBlock( bundle.entryModule, exportMode );
 	if ( exportBlock ) magicString.append( '\n\n' + exportBlock );
-	if ( exportMode === 'named' ) magicString.append( `\n\n${esModuleExport}` );
-	if ( options.outro ) magicString.append( `\n${options.outro}` );
+	if ( exportMode === 'named' && options.legacy !== true ) magicString.append( `\n\n${esModuleExport}` );
+	if ( outro ) magicString.append( outro );
 
 	return magicString
 		.trim()

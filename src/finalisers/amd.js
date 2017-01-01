@@ -2,8 +2,10 @@ import { getName, quotePath } from '../utils/map-helpers.js';
 import getInteropBlock from './shared/getInteropBlock.js';
 import getExportBlock from './shared/getExportBlock.js';
 import esModuleExport from './shared/esModuleExport.js';
+import warnOnBuiltins from './shared/warnOnBuiltins.js';
 
-export default function amd ( bundle, magicString, { exportMode, indentString, intro }, options ) {
+export default function amd ( bundle, magicString, { exportMode, indentString, intro, outro }, options ) {
+	warnOnBuiltins( bundle );
 	const deps = bundle.externalModules.map( quotePath );
 	const args = bundle.externalModules.map( getName );
 
@@ -27,8 +29,8 @@ export default function amd ( bundle, magicString, { exportMode, indentString, i
 
 	const exportBlock = getExportBlock( bundle.entryModule, exportMode );
 	if ( exportBlock ) magicString.append( '\n\n' + exportBlock );
-	if ( exportMode === 'named' ) magicString.append( `\n\n${esModuleExport}` );
-	if ( options.outro ) magicString.append( `\n${options.outro}` );
+	if ( exportMode === 'named' && options.legacy !== true ) magicString.append( `\n\n${esModuleExport}` );
+	if ( outro ) magicString.append( outro );
 
 	return magicString
 		.indent( indentString )

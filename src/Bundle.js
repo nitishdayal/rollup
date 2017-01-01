@@ -15,8 +15,8 @@ import { mapSequence } from './utils/promise.js';
 import transform from './utils/transform.js';
 import transformBundle from './utils/transformBundle.js';
 import collapseSourcemaps from './utils/collapseSourcemaps.js';
-import SOURCEMAPPING_URL from './utils/sourceMappingURL.js';
 import callIfFunction from './utils/callIfFunction.js';
+import relativeId from './utils/relativeId.js';
 import { dirname, isRelative, isAbsolute, normalize, relative, resolve } from './utils/path.js';
 import BundleScope from './ast/scopes/BundleScope.js';
 
@@ -176,6 +176,24 @@ export default class Bundle {
 
 				timeStart( 'phase 4' );
 
+				// while we're here, check for unused external imports
+				this.externalModules.forEach( module => {
+					const unused = Object.keys( module.declarations )
+						.filter( name => name !== '*' )
+						.filter( name => !module.declarations[ name ].activated );
+
+					if ( unused.length === 0 ) return;
+
+					const names = unused.length === 1 ?
+						`'${unused[0]}' is` :
+						`${unused.slice( 0, -1 ).map( name => `'${name}'` ).join( ', ' )} and '${unused.pop()}' are`;
+
+					this.warn({
+						code: 'UNUSED_EXTERNAL_IMPORT',
+						message: `${names} imported from external module '${module.id}' but never used`
+					});
+				});
+
 				this.orderedModules = this.sort();
 				this.deconflict();
 
@@ -198,18 +216,18 @@ export default class Bundle {
 			return name;
 		}
 
-		const toDeshadow = new Map();
+		const toDeshadow = new Set();
 
 		this.externalModules.forEach( module => {
 			const safeName = getSafeName( module.name );
-			toDeshadow.set( safeName, true );
+			toDeshadow.add( safeName );
 			module.name = safeName;
 
 			// ensure we don't shadow named external imports, if
 			// we're creating an ES6 bundle
 			forOwn( module.declarations, ( declaration, name ) => {
 				const safeName = getSafeName( name );
-				toDeshadow.set( safeName, true );
+				toDeshadow.add( safeName );
 				declaration.setSafeName( safeName );
 			});
 		});
@@ -294,7 +312,10 @@ export default class Bundle {
 
 						keys( exportAllModule.exportsAll ).forEach( name => {
 							if ( name in module.exportsAll ) {
-								this.onwarn( `Conflicting namespaces: ${module.id} re-exports '${name}' from both ${module.exportsAll[ name ]} (will be ignored) and ${exportAllModule.exportsAll[ name ]}.` );
+								this.warn({
+									code: 'NAMESPACE_CONFLICT',
+									message: `Conflicting namespaces: ${relativeId( module.id )} re-exports '${name}' from both ${relativeId( module.exportsAll[ name ] )} (will be ignored) and ${relativeId( exportAllModule.exportsAll[ name ] )}`
+								});
 							}
 							module.exportsAll[ name ] = exportAllModule.exportsAll[ name ];
 						});
@@ -318,7 +339,11 @@ export default class Bundle {
 					if ( !resolvedId && !isExternal ) {
 						if ( isRelative( source ) ) throw new Error( `Could not resolve '${source}' from ${module.id}` );
 
-						this.onwarn( `Treating '${source}' as external dependency` );
+						this.warn({
+							code: 'UNRESOLVED_IMPORT',
+							message: `'${source}' is imported by ${relativeId( module.id )}, but could not be resolved – treating it as an external dependency`,
+							url: 'https://github.com/rollup/rollup/wiki/Troubleshooting#treating-module-as-external-dependency'
+						});
 						isExternal = true;
 					}
 
@@ -330,6 +355,16 @@ export default class Bundle {
 							this.externalModules.push( module );
 							this.moduleById.set( externalId, module );
 						}
+
+						const externalModule = this.moduleById.get( externalId );
+
+						// add external declarations so we can detect which are never used
+						Object.keys( module.imports ).forEach( name => {
+							const importDeclaration = module.imports[ name ];
+							if ( importDeclaration.source !== source ) return;
+
+							externalModule.traceExport( importDeclaration.name );
+						});
 					} else {
 						if ( resolvedId === module.id ) {
 							throw new Error( `A module cannot import itself (${resolvedId})` );
@@ -355,11 +390,13 @@ export default class Bundle {
 
 	render ( options = {} ) {
 		if ( options.format === 'es6' ) {
-			this.onwarn( 'The es6 format is deprecated – use `es` instead' );
+			this.warn({
+				code: 'DEPRECATED_ES6',
+				message: 'The es6 format is deprecated – use `es` instead'
+			});
+
 			options.format = 'es';
 		}
-
-		const format = options.format || 'es';
 
 		// Determine export mode - 'default', 'named', 'none'
 		const exportMode = getExportMode( this, options );
@@ -370,13 +407,20 @@ export default class Bundle {
 		timeStart( 'render modules' );
 
 		this.orderedModules.forEach( module => {
-			const source = module.render( format === 'es', this.legacy );
+			const source = module.render( options.format === 'es', this.legacy );
 
 			if ( source.toString().length ) {
 				magicString.addSource( source );
 				usedModules.push( module );
 			}
 		});
+
+		if ( !magicString.toString().trim() && this.entryModule.getExports().length === 0 ) {
+			this.warn({
+				code: 'EMPTY_BUNDLE',
+				message: 'Generated an empty bundle'
+			});
+		}
 
 		timeEnd( 'render modules' );
 
@@ -387,16 +431,25 @@ export default class Bundle {
 			.filter( Boolean )
 			.join( '\n\n' );
 
-		if ( intro ) intro += '\n';
+		if ( intro ) intro += '\n\n';
+
+		let outro = [ options.outro ]
+			.concat(
+				this.plugins.map( plugin => plugin.outro && plugin.outro() )
+			)
+			.filter( Boolean )
+			.join( '\n\n' );
+
+		if ( outro ) outro = `\n\n${outro}`;
 
 		const indentString = getIndentString( magicString, options );
 
-		const finalise = finalisers[ format ];
+		const finalise = finalisers[ options.format ];
 		if ( !finalise ) throw new Error( `You must specify an output type - valid options are ${keys( finalisers ).join( ', ' )}` );
 
 		timeStart( 'render format' );
 
-		magicString = finalise( this, magicString.trim(), { exportMode, indentString, intro }, options );
+		magicString = finalise( this, magicString.trim(), { exportMode, indentString, intro, outro }, options );
 
 		timeEnd( 'render format' );
 
@@ -419,8 +472,7 @@ export default class Bundle {
 		let map = null;
 		const bundleSourcemapChain = [];
 
-		code = transformBundle( code, this.plugins, bundleSourcemapChain, options )
-			.replace( new RegExp( `\\/\\/#\\s+${SOURCEMAPPING_URL}=.+\\n?`, 'g' ), '' );
+		code = transformBundle( code, this.plugins, bundleSourcemapChain, options );
 
 		if ( options.sourceMap ) {
 			timeStart( 'sourceMap' );
@@ -433,7 +485,7 @@ export default class Bundle {
 				if ( typeof map.mappings === 'string' ) {
 					map.mappings = decode( map.mappings );
 				}
-				map = collapseSourcemaps( file, map, usedModules, bundleSourcemapChain, this.onwarn );
+				map = collapseSourcemaps( this, file, map, usedModules, bundleSourcemapChain );
 			} else {
 				map = magicString.generateMap({ file, includeContent: true });
 			}
@@ -498,6 +550,7 @@ export default class Bundle {
 				for ( i += 1; i < ordered.length; i += 1 ) {
 					const b = ordered[i];
 
+					// TODO reinstate this! it no longer works
 					if ( stronglyDependsOn[ a.id ][ b.id ] ) {
 						// somewhere, there is a module that imports b before a. Because
 						// b imports a, a is placed before b. We need to find the module
@@ -528,5 +581,17 @@ export default class Bundle {
 		}
 
 		return ordered;
+	}
+
+	warn ( warning ) {
+		warning.toString = () => {
+			if ( warning.loc ) {
+				return `${relativeId( warning.loc.file )} (${warning.loc.line}:${warning.loc.column}) ${warning.message}`;
+			}
+
+			return warning.message;
+		};
+
+		this.onwarn( warning );
 	}
 }

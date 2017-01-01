@@ -1,11 +1,16 @@
 import { realpathSync } from 'fs';
 import * as rollup from 'rollup';
 import relative from 'require-relative';
+import chalk from 'chalk';
 import handleError from './handleError';
+import relativeId from '../../src/utils/relativeId.js';
 import SOURCEMAPPING_URL from './sourceMappingUrl.js';
 
 import { install as installSourcemapSupport } from 'source-map-support';
 installSourcemapSupport();
+
+if ( !process.stderr.isTTY ) chalk.enabled = false;
+const warnSymbol = process.stderr.isTTY ? `⚠️   ` : `Warning: `;
 
 // stderr to stderr to keep `rollup main.js > bundle.js` from breaking
 const stderr = console.error.bind( console ); // eslint-disable-line no-console
@@ -60,8 +65,8 @@ export default function runRollup ( command ) {
 		rollup.rollup({
 			entry: config,
 			onwarn: message => {
-				if ( /Treating .+ as external dependency/.test( message ) ) return;
-				stderr( message );
+				if ( message.code === 'UNRESOLVED_IMPORT' ) return;
+				stderr( message.toString() );
 			}
 		}).then( bundle => {
 			const { code } = bundle.generate({
@@ -105,6 +110,7 @@ const equivalents = {
 	indent: 'indent',
 	input: 'entry',
 	intro: 'intro',
+	legacy: 'legacy',
 	name: 'moduleName',
 	output: 'dest',
 	outro: 'outro',
@@ -119,7 +125,7 @@ function execute ( options, command ) {
 	const optionsExternal = options.external;
 
 	if ( command.globals ) {
-		let globals = Object.create( null );
+		const globals = Object.create( null );
 
 		command.globals.split( ',' ).forEach( str => {
 			const names = str.split( ':' );
@@ -142,7 +148,32 @@ function execute ( options, command ) {
 		external = ( optionsExternal || [] ).concat( commandExternal );
 	}
 
-	options.onwarn = options.onwarn || stderr;
+	if ( !options.onwarn ) {
+		const seen = new Set();
+
+		options.onwarn = warning => {
+			const str = warning.toString();
+
+			if ( seen.has( str ) ) return;
+			seen.add( str );
+
+			stderr( `${warnSymbol}${chalk.bold( warning.message )}` );
+
+			if ( warning.url ) {
+				stderr( chalk.cyan( warning.url ) );
+			}
+
+			if ( warning.loc ) {
+				stderr( `${relativeId( warning.loc.file )} (${warning.loc.line}:${warning.loc.column})` );
+			}
+
+			if ( warning.frame ) {
+				stderr( chalk.dim( warning.frame ) );
+			}
+
+			stderr( '' );
+		};
+	}
 
 	options.external = external;
 
@@ -165,7 +196,7 @@ function execute ( options, command ) {
 
 				watcher.on( 'event', event => {
 					switch ( event.code ) {
-						case 'STARTING':
+						case 'STARTING': // TODO this isn't emitted by newer versions of rollup-watch
 							stderr( 'checking rollup-watch version...' );
 							break;
 

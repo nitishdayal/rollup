@@ -1,4 +1,4 @@
-import { isFile, readdirSync, readFileSync } from './fs.js';
+import { lstatSync, readdirSync, readFileSync, realpathSync } from './fs.js'; // eslint-disable-line
 import { basename, dirname, isAbsolute, resolve } from './path.js';
 import { blank } from './object.js';
 
@@ -6,18 +6,24 @@ export function load ( id ) {
 	return readFileSync( id, 'utf-8' );
 }
 
-function addJsExtensionIfNecessary ( file ) {
+function findFile ( file ) {
 	try {
-		const name = basename( file );
-		const files = readdirSync( dirname( file ) );
+		const stats = lstatSync( file );
+		if ( stats.isSymbolicLink() ) return findFile( realpathSync( file ) );
+		if ( stats.isFile() ) {
+			// check case
+			const name = basename( file );
+			const files = readdirSync( dirname( file ) );
 
-		if ( ~files.indexOf( name ) && isFile( file ) ) return file;
-		if ( ~files.indexOf( `${name}.js` ) && isFile( `${file}.js` ) ) return `${file}.js`;
+			if ( ~files.indexOf( name ) ) return file;
+		}
 	} catch ( err ) {
-		// noop
+		// suppress
 	}
+}
 
-	return null;
+function addJsExtensionIfNecessary ( file ) {
+	return findFile( file ) || findFile( file + '.js' );
 }
 
 export function resolveId ( importee, importer ) {
@@ -39,9 +45,10 @@ export function resolveId ( importee, importer ) {
 export function makeOnwarn () {
 	const warned = blank();
 
-	return msg => {
-		if ( msg in warned ) return;
-		console.error( msg ); //eslint-disable-line no-console
-		warned[ msg ] = true;
+	return warning => {
+		const str = warning.toString();
+		if ( str in warned ) return;
+		console.error( str ); //eslint-disable-line no-console
+		warned[ str ] = true;
 	};
 }
